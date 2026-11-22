@@ -31,7 +31,8 @@ const float BALL_SPEED_X = 3;
 const float BALL_SPEED_Y = -5;
 
 struct GameState
-{
+{   
+    int score = 0;
     int bricks[ROWS][COLS] = {};
     bool levelLoaded = false;
 
@@ -128,6 +129,25 @@ void handleInput(RenderWindow& window, GameState& game)
     }
 }
 
+//checks if the ball hit the brick
+bool hitBrick(GameState& game) {
+    int col = game.ballX / BRICK_WIDTH;
+    int row = (game.ballY - BRICK_START_Y) / BRICK_HEIGHT;
+
+    if (game.ballY >= BRICK_START_Y &&
+        row < ROWS &&
+        col >= 0 &&
+        col < COLS)
+    {
+        if(game.bricks[row][col] > 0)
+        {
+            game.bricks[row][col]--;
+            return true;
+        }
+    }
+    return false;
+}
+
 void updateGame(GameState& game)
 {
     if (Keyboard::isKeyPressed(Keyboard::Key::Left) ||
@@ -182,15 +202,26 @@ void updateGame(GameState& game)
     if (game.ballLaunched)
     {
         game.ballX += game.dx;
+        if (hitBrick(game))
+        {
+            game.ballX -= game.dx;
+            game.dx = -game.dx;
+        }
         game.ballY += game.dy;
+        if (hitBrick(game))
+        {
+            game.ballY -= game.dy;
+            game.dy = -game.dy;
+        }
     }
+
     if (game.ballX <= 0)
+    {
         game.dx = BALL_SPEED_X;
+    }
 
     if (game.ballX >= WINDOW_WIDTH - BALL_RADIUS * 2)
         game.dx = -BALL_SPEED_X;
-
-
 }
 
 void drawGame(RenderWindow& window, GameState& game)
