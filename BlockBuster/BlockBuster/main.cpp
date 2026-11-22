@@ -4,6 +4,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
+#include <algorithm>
 
 using namespace std;
 using namespace sf;
@@ -44,6 +45,8 @@ struct GameState
     float dy = 0;
 
     bool ballLaunched = false;
+
+    int score = 0;
 };
 
 bool loadLevel(GameState& game)
@@ -59,7 +62,8 @@ bool loadLevel(GameState& game)
 
     int fileRows, fileCols;
 
-    if (!(file >> fileRows >> fileCols) || fileRows != ROWS || fileCols != COLS)
+    if (!(file >> fileRows >> fileCols) ||
+        fileRows != ROWS || fileCols != COLS)
     {
         cout << "Error: Invalid grid dimensions" << endl;
         game.levelLoaded = false;
@@ -114,7 +118,8 @@ void handleInput(RenderWindow& window, GameState& game)
 
         else if (const auto* key = event->getIf<Event::KeyPressed>())
         {
-            if (key->code == Keyboard::Key::Space && !game.ballLaunched)
+            if (key->code == Keyboard::Key::Space &&
+                !game.ballLaunched)
             {
                 game.ballLaunched = true;
                 game.dy = BALL_SPEED_Y;
@@ -130,6 +135,7 @@ void handleInput(RenderWindow& window, GameState& game)
 
 void updateGame(GameState& game)
 {
+    // Paddle movement
     if (Keyboard::isKeyPressed(Keyboard::Key::Left) ||
         Keyboard::isKeyPressed(Keyboard::Key::A))
     {
@@ -142,23 +148,60 @@ void updateGame(GameState& game)
         game.paddleX += PADDLE_SPEED;
     }
 
-    // Stop left wall
+    // Paddle boundaries
     if (game.paddleX < 0)
         game.paddleX = 0;
 
-    // Stop rght wall
     if (game.paddleX > WINDOW_WIDTH - PADDLE_WIDTH)
         game.paddleX = WINDOW_WIDTH - PADDLE_WIDTH;
 
-    if (game.ballY <= 0)
-        game.dy = BALL_SPEED_Y * -1;
+    // Ball follows paddle before launch
+    if (!game.ballLaunched)
+    {
+        game.ballX = game.paddleX + 44;
+        game.ballY = 638;
+    }
 
+    // Ball movement
+    if (game.ballLaunched)
+    {
+        game.ballX += game.dx;
+        game.ballY += game.dy;
+    }
+
+    // Left wall bounce
+    if (game.ballX <= 0)
+    {
+        game.ballX = 0;
+        game.dx = BALL_SPEED_X;
+    }
+
+    // Right wall bounce
+    if (game.ballX >= WINDOW_WIDTH - BALL_RADIUS * 2)
+    {
+        game.ballX = WINDOW_WIDTH - BALL_RADIUS * 2;
+        game.dx = -BALL_SPEED_X;
+    }
+
+    // Top wall bounce
+    if (game.ballY <= 0)
+    {
+        game.ballY = 0;
+        game.dy = -BALL_SPEED_Y;
+    }
+
+    // Paddle collision
     if (game.dy > 0 &&
         game.ballY + BALL_RADIUS * 2 >= PADDLE_Y &&
         game.ballX + BALL_RADIUS * 2 >= game.paddleX &&
         game.ballX <= game.paddleX + PADDLE_WIDTH)
     {
-        float hitPosition = (game.ballX + BALL_RADIUS - game.paddleX) / PADDLE_WIDTH;
+        game.ballY = PADDLE_Y - BALL_RADIUS * 2;
+        game.dy = BALL_SPEED_Y;
+
+        float hitPosition =
+            (game.ballX + BALL_RADIUS - game.paddleX)
+            / PADDLE_WIDTH;
 
         if (hitPosition < 0.33)
             game.dx = -BALL_SPEED_X;
@@ -168,29 +211,73 @@ void updateGame(GameState& game)
 
         else
             game.dx = 0;
-
-        game.dy = BALL_SPEED_Y;
     }
 
-   //bal on padl
-    if (!game.ballLaunched)
-    {
-        game.ballX = game.paddleX + 44;
-        game.ballY = 638;
-    }
-
+    // Brick collision
     if (game.ballLaunched)
     {
-        game.ballX += game.dx;
-        game.ballY += game.dy;
+        bool hitBrick = false;
+
+        for (int r = 0; r < ROWS && !hitBrick; r++)
+        {
+            for (int c = 0; c < COLS; c++)
+            {
+                if (game.bricks[r][c] == 0)
+                    continue;
+
+                float brickX = c * BRICK_WIDTH + BRICK_GAP / 2;
+                float brickY = BRICK_START_Y +
+                    r * BRICK_HEIGHT + BRICK_GAP / 2;
+
+                float ballLeft = game.ballX;
+                float ballRight = game.ballX + BALL_RADIUS * 2;
+                float ballTop = game.ballY;
+                float ballBottom = game.ballY + BALL_RADIUS * 2;
+
+                if (ballRight >= brickX &&
+                    ballLeft <= brickX + BRICK_WIDTH &&
+                    ballBottom >= brickY &&
+                    ballTop <= brickY + BRICK_HEIGHT)
+                {
+                    float overlapX = min(
+                        ballRight - brickX,
+                        brickX + BRICK_WIDTH - ballLeft);
+
+                    float overlapY = min(
+                        ballBottom - brickY,
+                        brickY + BRICK_HEIGHT - ballTop);
+
+                    // Horizontal collision
+                    if (overlapX < overlapY)
+                    {
+                        if (game.dx > 0)
+                            game.ballX = brickX - BALL_RADIUS * 2;
+                        else
+                            game.ballX = brickX + BRICK_WIDTH;
+
+                        game.dx = -game.dx;
+                    }
+
+                    // Vertical collision
+                    else
+                    {
+                        if (game.dy > 0)
+                            game.ballY = brickY - BALL_RADIUS * 2;
+                        else
+                            game.ballY = brickY + BRICK_HEIGHT;
+
+                        game.dy = -game.dy;
+                    }
+
+                    game.bricks[r][c]--;
+                    game.score += 10;
+
+                    hitBrick = true;
+                    break;
+                }
+            }
+        }
     }
-    if (game.ballX <= 0)
-        game.dx = BALL_SPEED_X;
-
-    if (game.ballX >= WINDOW_WIDTH - BALL_RADIUS * 2)
-        game.dx = -BALL_SPEED_X;
-
-
 }
 
 void drawGame(RenderWindow& window, GameState& game)
@@ -209,7 +296,9 @@ void drawGame(RenderWindow& window, GameState& game)
     }
 
     // Draw bricks
-    RectangleShape brickShape(Vector2f(BRICK_WIDTH - BRICK_GAP, BRICK_HEIGHT - BRICK_GAP));
+    RectangleShape brickShape(
+        Vector2f(BRICK_WIDTH - BRICK_GAP,
+            BRICK_HEIGHT - BRICK_GAP));
 
     for (int r = 0; r < ROWS; r++)
     {
@@ -221,7 +310,8 @@ void drawGame(RenderWindow& window, GameState& game)
                 continue;
 
             float x = c * BRICK_WIDTH + BRICK_GAP / 2;
-            float y = BRICK_START_Y + r * BRICK_HEIGHT + BRICK_GAP / 2;
+            float y = BRICK_START_Y +
+                r * BRICK_HEIGHT + BRICK_GAP / 2;
 
             brickShape.setPosition(Vector2f(x, y));
             brickShape.setFillColor(getBrickColor(hp));
@@ -231,7 +321,9 @@ void drawGame(RenderWindow& window, GameState& game)
     }
 
     // Draw paddle
-    RectangleShape paddle(Vector2f(PADDLE_WIDTH, PADDLE_HEIGHT));
+    RectangleShape paddle(
+        Vector2f(PADDLE_WIDTH, PADDLE_HEIGHT));
+
     paddle.setPosition(Vector2f(game.paddleX, PADDLE_Y));
     paddle.setFillColor(Color(230, 230, 240));
 
@@ -239,6 +331,7 @@ void drawGame(RenderWindow& window, GameState& game)
 
     // Draw ball
     CircleShape ball(BALL_RADIUS);
+
     ball.setPosition(Vector2f(game.ballX, game.ballY));
     ball.setFillColor(Color(255, 255, 255));
 
@@ -251,7 +344,9 @@ int main()
 {
     srand(time(0));
 
-    RenderWindow window(VideoMode({ 600, 700 }), "Block Buster");
+    RenderWindow window(
+        VideoMode({ 600, 700 }), "Block Buster");
+
     window.setFramerateLimit(FPS_LIMIT);
 
     GameState game;
