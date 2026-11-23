@@ -4,7 +4,6 @@
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
-#include <algorithm>
 
 using namespace std;
 using namespace sf;
@@ -45,8 +44,13 @@ struct GameState
     float dy = 0;
 
     bool ballLaunched = false;
+    bool gameStarted = false;
 
     int score = 0;
+    int lives = 3;
+
+    bool gameOver = false;
+    bool gameWon = false;
 };
 
 bool loadLevel(GameState& game)
@@ -93,6 +97,80 @@ bool loadLevel(GameState& game)
     return true;
 }
 
+bool saveGame(GameState& game)
+{
+    ofstream file("save.txt");
+
+    if (!file.is_open())
+    {
+        cout << "Could not save game." << endl;
+        return false;
+    }
+
+    file << game.score << endl;
+    file << game.lives << endl;
+    file << game.paddleX << endl;
+    file << game.ballX << endl;
+    file << game.ballY << endl;
+    file << game.dx << endl;
+    file << game.dy << endl;
+    file << game.ballLaunched << endl;
+
+    for (int r = 0; r < ROWS; r++)
+    {
+        for (int c = 0; c < COLS; c++)
+        {
+            file << game.bricks[r][c] << " ";
+        }
+        file << endl;
+    }
+
+    file.close();
+
+    cout << "Game saved!" << endl;
+    return true;
+}
+
+bool loadSave(GameState& game)
+{
+    ifstream file("save.txt");
+
+    if (!file.is_open())
+    {
+        cout << "No save file found." << endl;
+        return false;
+    }
+
+    if (!(file >> game.score >> game.lives
+        >> game.paddleX >> game.ballX >> game.ballY
+        >> game.dx >> game.dy >> game.ballLaunched))
+    {
+        cout << "Invalid save file." << endl;
+        return false;
+    }
+
+    for (int r = 0; r < ROWS; r++)
+    {
+        for (int c = 0; c < COLS; c++)
+        {
+            if (!(file >> game.bricks[r][c]))
+            {
+                cout << "Invalid brick data." << endl;
+                return false;
+            }
+        }
+    }
+
+    game.gameStarted = true;
+    game.gameOver = false;
+    game.gameWon = false;
+
+    file.close();
+
+    cout << "Game loaded!" << endl;
+    return true;
+}
+
 Color getBrickColor(int hp)
 {
     if (hp == 1)
@@ -118,16 +196,50 @@ void handleInput(RenderWindow& window, GameState& game)
 
         else if (const auto* key = event->getIf<Event::KeyPressed>())
         {
-            if (key->code == Keyboard::Key::Space &&
-                !game.ballLaunched)
+            if (key->code == Keyboard::Key::Space)
             {
-                game.ballLaunched = true;
-                game.dy = BALL_SPEED_Y;
+                if (!game.gameStarted &&
+                    !game.gameOver &&
+                    !game.gameWon)
+                {
+                    game.gameStarted = true;
+                }
 
-                if (rand() % 2 == 0)
-                    game.dx = BALL_SPEED_X;
-                else
-                    game.dx = -BALL_SPEED_X;
+                else if (game.gameStarted &&
+                    !game.ballLaunched &&
+                    !game.gameOver &&
+                    !game.gameWon)
+                {
+                    game.ballLaunched = true;
+                    game.dy = BALL_SPEED_Y;
+
+                    if (rand() % 2 == 0)
+                        game.dx = BALL_SPEED_X;
+                    else
+                        game.dx = -BALL_SPEED_X;
+                }
+            }
+
+            // Save game
+            else if (key->code == Keyboard::Key::S)
+            {
+                if (game.gameStarted &&
+                    !game.gameOver &&
+                    !game.gameWon)
+                {
+                    saveGame(game);
+                }
+            }
+
+            // Load game from menu
+            else if (key->code == Keyboard::Key::L)
+            {
+                if (!game.gameStarted &&
+                    !game.gameOver &&
+                    !game.gameWon)
+                {
+                    loadSave(game);
+                }
             }
         }
     }
@@ -135,6 +247,9 @@ void handleInput(RenderWindow& window, GameState& game)
 
 void updateGame(GameState& game)
 {
+    if (!game.gameStarted || game.gameOver || game.gameWon)
+        return;
+
     // Paddle movement
     if (Keyboard::isKeyPressed(Keyboard::Key::Left) ||
         Keyboard::isKeyPressed(Keyboard::Key::A))
@@ -169,21 +284,21 @@ void updateGame(GameState& game)
         game.ballY += game.dy;
     }
 
-    // Left wall bounce
+    // Left wall
     if (game.ballX <= 0)
     {
         game.ballX = 0;
         game.dx = BALL_SPEED_X;
     }
 
-    // Right wall bounce
+    // Right wall
     if (game.ballX >= WINDOW_WIDTH - BALL_RADIUS * 2)
     {
         game.ballX = WINDOW_WIDTH - BALL_RADIUS * 2;
         game.dx = -BALL_SPEED_X;
     }
 
-    // Top wall bounce
+    // Top wall
     if (game.ballY <= 0)
     {
         game.ballY = 0;
@@ -213,8 +328,27 @@ void updateGame(GameState& game)
             game.dx = 0;
     }
 
+    // Ball lost
+    if (game.ballY > WINDOW_HEIGHT)
+    {
+        game.lives--;
+
+        if (game.lives <= 0)
+        {
+            game.gameOver = true;
+        }
+        else
+        {
+            game.ballLaunched = false;
+            game.dx = 0;
+            game.dy = 0;
+            game.ballX = game.paddleX + 44;
+            game.ballY = 638;
+        }
+    }
+
     // Brick collision
-    if (game.ballLaunched)
+    if (game.ballLaunched && !game.gameOver)
     {
         bool hitBrick = false;
 
@@ -239,13 +373,19 @@ void updateGame(GameState& game)
                     ballBottom >= brickY &&
                     ballTop <= brickY + BRICK_HEIGHT)
                 {
-                    float overlapX = min(
-                        ballRight - brickX,
-                        brickX + BRICK_WIDTH - ballLeft);
+                    float overlapX = ballRight - brickX;
+                    float otherOverlapX =
+                        brickX + BRICK_WIDTH - ballLeft;
 
-                    float overlapY = min(
-                        ballBottom - brickY,
-                        brickY + BRICK_HEIGHT - ballTop);
+                    if (otherOverlapX < overlapX)
+                        overlapX = otherOverlapX;
+
+                    float overlapY = ballBottom - brickY;
+                    float otherOverlapY =
+                        brickY + BRICK_HEIGHT - ballTop;
+
+                    if (otherOverlapY < overlapY)
+                        overlapY = otherOverlapY;
 
                     // Horizontal collision
                     if (overlapX < overlapY)
@@ -278,24 +418,71 @@ void updateGame(GameState& game)
             }
         }
     }
+
+    // Check if all bricks destroyed
+    bool allBricksDestroyed = true;
+
+    for (int r = 0; r < ROWS; r++)
+    {
+        for (int c = 0; c < COLS; c++)
+        {
+            if (game.bricks[r][c] > 0)
+                allBricksDestroyed = false;
+        }
+    }
+
+    if (allBricksDestroyed)
+        game.gameWon = true;
 }
 
-void drawGame(RenderWindow& window, GameState& game)
+void drawGame(RenderWindow& window, GameState& game, Font& font)
 {
     window.clear(Color(25, 25, 45));
 
-    if (!game.levelLoaded)
+    // Menu
+    if (!game.gameStarted && !game.gameOver && !game.gameWon)
     {
-        RectangleShape errorBox(Vector2f(500, 60));
-        errorBox.setPosition(Vector2f(50, 280));
-        errorBox.setFillColor(Color(140, 30, 30));
+        Text title(font, "BLOCK BUSTER", 50);
+        title.setFillColor(Color(235, 200, 50));
+        title.setPosition(Vector2f(90, 230));
+        window.draw(title);
 
-        window.draw(errorBox);
+        Text instructions(font, "Press SPACE to start", 28);
+        instructions.setFillColor(Color::White);
+        instructions.setPosition(Vector2f(145, 350));
+        window.draw(instructions);
+
+        Text controls(font, "Move with A/D or arrow keys", 22);
+        controls.setFillColor(Color(180, 180, 200));
+        controls.setPosition(Vector2f(115, 420));
+        window.draw(controls);
+
+        Text saveInstructions(font, "Press L to load saved game", 22);
+        saveInstructions.setFillColor(Color(180, 180, 200));
+        saveInstructions.setPosition(Vector2f(135, 470));
+        window.draw(saveInstructions);
         window.display();
         return;
     }
 
-    // Draw bricks
+    // HUD
+    RectangleShape hud(Vector2f(WINDOW_WIDTH, 50));
+    hud.setFillColor(Color(15, 15, 30));
+    window.draw(hud);
+
+    // Score
+    Text scoreText(font, "Score: " + to_string(game.score), 24);
+    scoreText.setPosition(Vector2f(20, 10));
+    scoreText.setFillColor(Color::White);
+    window.draw(scoreText);
+
+    // Lives
+    Text livesText(font, "Lives: " + to_string(game.lives), 24);
+    livesText.setPosition(Vector2f(440, 10));
+    livesText.setFillColor(Color::White);
+    window.draw(livesText);
+
+    // Bricks
     RectangleShape brickShape(
         Vector2f(BRICK_WIDTH - BRICK_GAP,
             BRICK_HEIGHT - BRICK_GAP));
@@ -320,7 +507,7 @@ void drawGame(RenderWindow& window, GameState& game)
         }
     }
 
-    // Draw paddle
+    // Paddle
     RectangleShape paddle(
         Vector2f(PADDLE_WIDTH, PADDLE_HEIGHT));
 
@@ -329,13 +516,39 @@ void drawGame(RenderWindow& window, GameState& game)
 
     window.draw(paddle);
 
-    // Draw ball
+    // Ball
     CircleShape ball(BALL_RADIUS);
-
     ball.setPosition(Vector2f(game.ballX, game.ballY));
-    ball.setFillColor(Color(255, 255, 255));
+    ball.setFillColor(Color::White);
 
     window.draw(ball);
+
+    // End screen
+    if (game.gameOver || game.gameWon)
+    {
+        RectangleShape overlay(Vector2f(600, 700));
+        overlay.setFillColor(Color(0, 0, 0, 180));
+        window.draw(overlay);
+
+        if (game.gameWon)
+        {
+            Text resultText(font, "YOU WIN!", 50);
+            resultText.setFillColor(Color::Green);
+            resultText.setPosition(Vector2f(160, 280));
+            window.draw(resultText);
+        }
+        else
+        {
+            Text resultText(font, "GAME OVER", 50);
+            resultText.setFillColor(Color::Red);
+            resultText.setPosition(Vector2f(130, 280));
+            window.draw(resultText);
+        }
+
+        Text finalScore(font, "Final Score: " + to_string(game.score), 30);
+        finalScore.setPosition(Vector2f(160, 370));
+        window.draw(finalScore);
+    }
 
     window.display();
 }
@@ -349,6 +562,14 @@ int main()
 
     window.setFramerateLimit(FPS_LIMIT);
 
+    Font font;
+
+    if (!font.openFromFile("arial.ttf"))
+    {
+        cout << "Error: Could not load arial.ttf" << endl;
+        return 1;
+    }
+
     GameState game;
 
     if (!loadLevel(game))
@@ -360,7 +581,7 @@ int main()
     {
         handleInput(window, game);
         updateGame(game);
-        drawGame(window, game);
+        drawGame(window, game, font);
     }
 
     return 0;
