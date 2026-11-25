@@ -278,7 +278,7 @@ void drawGame(RenderWindow& window, GameState& game)
     window.display();
 }
 
-int main()
+int main1()
 {
     srand(time(0));
 
