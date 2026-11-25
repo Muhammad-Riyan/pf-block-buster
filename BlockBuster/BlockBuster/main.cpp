@@ -48,7 +48,8 @@ const float BALL_SPEED_X = 3;
 const float BALL_SPEED_Y = -5;
 
 struct GameState
-{
+{   
+    int score = 0;
     int bricks[ROWS][COLS] = {};
     bool levelLoaded = false;
 
