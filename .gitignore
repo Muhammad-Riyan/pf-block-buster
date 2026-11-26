@@ -3,54 +3,6 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
-
-# Visual Studio user-specific files
-.vs/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-
-# Visual Studio build output
-[Bb]in/
-[Oo]bj/
-[Dd]ebug/
-[Rr]elease/
-x64/
-x86/
-out/
-
-# Visual Studio project files
-*.sln
-*.vcxproj
-*.vcxproj.filters
-*.vcxproj.user
-*.csproj
-*.slnx
-
-# Build and temporary files
-*.pdb
-*.ilk
-*.obj
-*.pch
-*.idb
-*.ipch
-*.log
-*.tlog
-*.lastbuildstate
-
-# CMake generated files
-CMakeFiles/
-CMakeCache.txt
-cmake-build-*/
-
-# Windows generated files
-Thumbs.db
-Desktop.ini
-
-
-SFML-3.0.2/
-
 # User-specific files
 *.rsuser
 *.suo
