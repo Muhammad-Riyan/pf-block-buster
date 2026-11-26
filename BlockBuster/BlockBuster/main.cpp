@@ -1,18 +1,3 @@
-None selected 
-
-Skip to content
-Using FAST-NU Lahore Mail with screen readers
-
-Enable desktop notifications for FAST-NU Lahore Mail.
-   OK  No thanks
-
-1 of 29
-(no subject)
-
-Armeen Waheed BS(AI) 2026 FAST NU LHR <l260034@lhr.nu.edu.pk>
-8:33 PM (0 minutes ago)
-to Armeen
-
 #include <SFML/Graphics.hpp>
 #include <fstream>
 #include <iostream>
@@ -47,6 +32,7 @@ const float BALL_RADIUS = 6;
 const float BALL_SPEED_X = 3;
 const float BALL_SPEED_Y = -5;
 
+// Game structure
 struct GameState
 {
     int bricks[ROWS][COLS] = {};
@@ -68,6 +54,12 @@ struct GameState
 
     bool gameOver = false;
     bool gameWon = false;
+
+    // Power-up box
+    bool powerUpActive = false;
+    bool powerUpCaught = false;
+    float powerUpX = 0;
+    float powerUpY = 0;
 
     int menuSelection = 0;
 };
@@ -137,6 +129,9 @@ void restartGame(GameState &game)
 
     game.menuSelection = 0;
 
+    game.powerUpActive = false;
+    game.powerUpCaught = false;
+
     resetBall(game);
     loadLevel(game);
 }
@@ -151,6 +146,8 @@ void returnToMenu(GameState &game)
 
     game.menuSelection = 0;
     game.ballLaunched = false;
+    game.powerUpActive = false;
+    game.powerUpCaught = false;
 }
 
 // Save game
@@ -226,6 +223,9 @@ bool loadSave(GameState &game)
     }
 
     resetBall(game);
+
+    game.powerUpActive = false;
+    game.powerUpCaught = false;
 
     game.gameStarted = true;
     game.gameOver = false;
@@ -554,6 +554,29 @@ void updateGame(GameState &game)
         }
     }
 
+    // Power-up movement and catching
+    if (game.powerUpActive)
+    {
+        game.powerUpY += 3;
+
+        // Catching the power-up
+        if (game.powerUpY + 20 >= PADDLE_Y &&
+            game.powerUpX + 20 >= game.paddleX &&
+            game.powerUpX <= game.paddleX + PADDLE_WIDTH)
+        {
+            game.powerUpActive = false;
+            game.powerUpCaught = true;
+
+            cout << "POWER-UP CAUGHT!" << endl;
+        }
+
+        // Power-up missed
+        if (game.powerUpY > WINDOW_HEIGHT)
+        {
+            game.powerUpActive = false;
+        }
+    }
+
     // Brick collision
     if (game.ballLaunched && !game.gameOver)
     {
@@ -621,6 +644,15 @@ void updateGame(GameState &game)
 
                     game.bricks[r][c]--;
                     game.score += 10;
+
+                    // Randomly spawn a power-up box
+                    if (!game.powerUpActive &&
+                        rand() % 8 == 0)
+                    {
+                        game.powerUpActive = true;
+                        game.powerUpX = brickX + BRICK_WIDTH / 2 - 10;
+                        game.powerUpY = brickY;
+                    }
 
                     hitBrick = true;
                     break;
@@ -725,6 +757,15 @@ void drawGameplay(RenderWindow &window, Font &font,
     livesText.setPosition(Vector2f(450, 12));
     window.draw(livesText);
 
+    // Power-up status
+    if (game.powerUpCaught)
+    {
+        Text powerText(font, "POWER-UP CAUGHT!", 16);
+        powerText.setFillColor(Color(255, 220, 50));
+        powerText.setPosition(Vector2f(220, 15));
+        window.draw(powerText);
+    }
+
     // Bricks
     RectangleShape brickShape(
         Vector2f(BRICK_WIDTH - BRICK_GAP,
@@ -763,6 +804,21 @@ void drawGameplay(RenderWindow &window, Font &font,
     ball.setPosition(Vector2f(game.ballX, game.ballY));
     ball.setFillColor(Color::White);
     window.draw(ball);
+
+    // Power-up box
+    if (game.powerUpActive)
+    {
+        RectangleShape powerUp(Vector2f(20, 20));
+
+        powerUp.setPosition(Vector2f(
+            game.powerUpX, game.powerUpY));
+
+        powerUp.setFillColor(Color(255, 220, 50));
+        powerUp.setOutlineColor(Color::White);
+        powerUp.setOutlineThickness(2);
+
+        window.draw(powerUp);
+    }
 
     // Pause menu
     if (game.paused)
