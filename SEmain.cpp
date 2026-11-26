@@ -42,7 +42,7 @@ Sound gameOverSound(gameOverBuffer);
 Sound powerUpSound(powerUpBuffer);
 
 struct GameState
-{   
+{
     int score = 0;
     int bricks[ROWS][COLS] = {};
     bool levelLoaded = false;
